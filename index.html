@@ -214,6 +214,7 @@
     <button class="tab-btn" data-tab="forward">Forward</button>
     <button class="tab-btn" data-tab="historical">Historical</button>
     <button class="tab-btn" data-tab="rangemap">Range Map</button>
+    <button class="tab-btn" data-tab="returns">ECSA Returns</button>
     <button class="tab-btn" data-tab="assumptions">Assumptions</button>
   </div>
 
@@ -283,6 +284,23 @@
         <span><span class="map-legend-dot" style="background:#c04040;"></span> Out of range</span>
         <span><span class="map-legend-dot" style="background:#c9a84c;"></span> Load port (Timbues)</span>
       </div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: ECSA RETURNS ═══ -->
+  <div class="tab-content" id="tab-returns">
+    <div class="card">
+      <h3>ECSA Returns &mdash; SA&rarr;India TCE at a given rate</h3>
+      <div class="map-controls" style="margin-bottom:16px;">
+        <div>
+          <label style="font-size:10px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;">SA&rarr;India Rate ($/mt)</label>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:4px;">
+            <input type="number" id="returnsRateInput" class="map-rate-input" value="140" step="5" min="0" max="500">
+            <input type="range" id="returnsRateSlider" class="map-slider" min="0" max="500" step="5" value="140">
+          </div>
+        </div>
+      </div>
+      <div class="results-grid" id="returnsGrid"></div>
     </div>
   </div>
 
@@ -993,6 +1011,92 @@ function showDrillDown(pos) {
 
   document.getElementById('modalContent').innerHTML = html;
   document.getElementById('modal').classList.add('active');
+}
+
+// ── ECSA Returns ──
+function updateReturns() {
+  var inputRate = parseFloat(document.getElementById('returnsRateInput').value) || 0;
+  var grid = document.getElementById('returnsGrid');
+  grid.innerHTML = '';
+  var refDate = state.refDate;
+  var positions = Object.keys(D.openingPositions);
+
+  // Use spot prices for this calc
+  state._useSpotPrices = true;
+
+  var results = [];
+  positions.forEach(function(pos) {
+    var saVoy = calcSAIndiaTCE(pos, inputRate, refDate);
+    if (!saVoy) return;
+    var competition = calcBestCompetition(pos, refDate);
+    if (!competition || !competition.best) return;
+
+    var saTce = state.nextVoyage ? saVoy.combinedTce : saVoy.tce;
+    var compTce = state.nextVoyage ? competition.best.combinedTce : competition.best.tce;
+    var margin = saTce - compTce;
+
+    results.push({
+      pos: pos, saTce: saTce, compTce: compTce, margin: margin,
+      saVoy: saVoy, competition: competition,
+      region: D.openingPositions[pos] ? D.openingPositions[pos].region : '',
+    });
+  });
+
+  // Compute average (same components as spot tab)
+  var avgSaTce = 0, avgCompTce = 0, avgCnt = 0;
+  AVG_COMPONENTS.forEach(function(p) {
+    var r = results.find(function(x) { return x.pos === p; });
+    if (r) { avgSaTce += r.saTce; avgCompTce += r.compTce; avgCnt++; }
+  });
+
+  state._useSpotPrices = false;
+
+  // Render average card first
+  if (avgCnt > 0) {
+    var avgSa = avgSaTce / avgCnt;
+    var avgComp = avgCompTce / avgCnt;
+    var avgMargin = avgSa - avgComp;
+    renderReturnCard(grid, {
+      pos: 'Average', region: 'Avg (' + AVG_COMPONENTS.join(', ') + ')',
+      saTce: avgSa, compTce: avgComp, margin: avgMargin,
+      competition: { best: { route: 'Avg' } },
+      isAverage: true,
+    });
+  }
+
+  // Render individual cards
+  results.forEach(function(r) { renderReturnCard(grid, r); });
+}
+
+function renderReturnCard(grid, r) {
+  var marginColor = r.margin >= 0 ? 'var(--green)' : 'var(--red)';
+  var marginSign = r.margin >= 0 ? '+' : '';
+  var bestRoute = r.competition.best.route;
+  // Determine all comps text
+  var allCompsText = '';
+  if (!r.isAverage && r.competition.all) {
+    allCompsText = r.competition.all.map(function(c) {
+      var t = state.nextVoyage ? c.combinedTce : c.tce;
+      return c.route + ' $' + fmtN(t) + '/d';
+    }).join(' | ');
+  }
+
+  var card = document.createElement('div');
+  card.className = 'result-card' + (r.isAverage ? ' avg-highlight' : '');
+  card.innerHTML =
+    '<div class="rc-header">' +
+      '<span class="rc-position">' + r.pos + '</span>' +
+      '<span class="rc-region">' + r.region + '</span>' +
+    '</div>' +
+    '<div class="rc-breakeven" style="color:' + marginColor + '">' + marginSign + '$' + fmtN(Math.abs(r.margin)) + '/d</div>' +
+    '<div class="rc-breakeven-unit">vs best alternative (' + bestRoute + ')</div>' +
+    '<div class="rc-details">' +
+      '<div class="rc-detail"><span class="rc-dlabel">SA→India TCE </span><span class="rc-dvalue" style="color:var(--text-bright)">$' + fmtN(r.saTce) + '/d</span></div>' +
+      '<div class="rc-detail"><span class="rc-dlabel">Best Alt TCE </span><span class="rc-dvalue">$' + fmtN(r.compTce) + '/d</span></div>' +
+    '</div>' +
+    (allCompsText ? '<div class="rc-comp">' + allCompsText + '</div>' : '');
+
+  grid.appendChild(card);
 }
 
 // ── Forward Breakeven Term Structure ──
@@ -2028,6 +2132,9 @@ function init() {
       if (document.getElementById('tab-historical').classList.contains('active')) {
         calcHistoricalBreakevens();
       }
+      if (document.getElementById('tab-returns').classList.contains('active')) {
+        updateReturns();
+      }
     });
   });
 
@@ -2040,6 +2147,9 @@ function init() {
       calculateAll();
       if (document.getElementById('tab-historical').classList.contains('active')) {
         calcHistoricalBreakevens();
+      }
+      if (document.getElementById('tab-returns').classList.contains('active')) {
+        updateReturns();
       }
     });
   });
@@ -2089,6 +2199,9 @@ function init() {
       if (btn.dataset.tab === 'rangemap') {
         initRangeMap();
         updateRangeMap();
+      }
+      if (btn.dataset.tab === 'returns') {
+        updateReturns();
       }
       if (btn.dataset.tab === 'assumptions') {
         renderAssumptions();
@@ -2198,6 +2311,18 @@ function init() {
       }
       updateRangeMap();
     });
+  });
+
+  // Returns tab controls
+  var retInput = document.getElementById('returnsRateInput');
+  var retSlider = document.getElementById('returnsRateSlider');
+  retInput.addEventListener('change', function() {
+    retSlider.value = this.value;
+    updateReturns();
+  });
+  retSlider.addEventListener('input', function() {
+    retInput.value = this.value;
+    updateReturns();
   });
 
   // Initial calculation
