@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ECSA East Breakeven — MR Tanker SA→India</title>
+  <title>ECSA East Breakeven — SA→India</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap" rel="stylesheet">
   <script src="data.js"></script>
   <script src="https://andrewccamp-glitch.github.io/global-dashboard/freight-calculator/data.js"></script>
@@ -151,7 +151,7 @@
   <div class="header">
     <div>
       <h1>ECSA East Breakeven</h1>
-      <div class="header-sub">MR Tanker — South America → India vs Atlantic Alternatives</div>
+      <div class="header-sub">South America → India vs Atlantic Alternatives — <span id="dispVessel">MR50</span></div>
     </div>
     <div style="text-align:right;">
       <div class="price-bar">
@@ -177,6 +177,15 @@
         <div class="toggle-group" id="nextVoyToggle">
           <button class="toggle-btn active" data-val="on">ON</button>
           <button class="toggle-btn" data-val="off">OFF</button>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;">Vessel</label>
+        <div class="toggle-group" id="vesselToggle">
+          <button class="toggle-btn" data-val="HANDC37">HANDC37</button>
+          <button class="toggle-btn active" data-val="MR50">MR50</button>
+          <button class="toggle-btn" data-val="LR1_75">LR1-75</button>
+          <button class="toggle-btn" data-val="LR2_115">LR2-115</button>
         </div>
       </div>
       <div>
@@ -348,7 +357,9 @@
 // ══════════════════════════════════════════════
 
 var D = ECSA_DATA;
+var VC = D.vesselClasses.MR50;  // default vessel class
 var state = {
+  vesselClass: 'MR50',
   dischRegion: 'WCI',
   nextVoyage: true,
   refDate: new Date(),
@@ -356,22 +367,57 @@ var state = {
   lsmgo: 0,
   ffa: {},  // { TC2: rate, TC5: rate, ... }
   _useSpotPrices: false,
-  // Vessel overrides
-  ladenSpeed: D.vessel.ladenSpeed,
-  ballastSpeed: D.vessel.ballastSpeed,
-  ladenCons: D.vessel.ladenCons,
-  ballastCons: D.vessel.ballastCons,
-  portConsLoad: D.vessel.portConsLoad,
-  portConsDisch: D.vessel.portConsDisch,
-  portConsWait: D.vessel.portConsWait,
-  commissionPct: D.vessel.commissionPct,
-  cargoSAIndia: D.vessel.cargoSAIndia,
-  cargoMRonLR1: D.vessel.cargoMRonLR1,
-  cleaningCost: D.vessel.cleaningCost,
-  cleaningDays: D.vessel.cleaningDays,
-  loadDays: D.laytime.loadHours / 24,
-  dischDays: D.laytime.dischHours / 24,
+  // Vessel params (initialized from MR50)
+  ladenSpeed: VC.ladenSpeed,
+  ballastSpeed: VC.ballastSpeed,
+  ladenCons: VC.ladenCons,
+  ballastCons: VC.ballastCons,
+  portConsLoad: VC.portConsLoad,
+  portConsDisch: VC.portConsDisch,
+  portConsWait: VC.portConsWait,
+  commissionPct: VC.commissionPct,
+  cargoSAIndia: VC.cargoSAIndia,
+  cleaningCost: VC.cleaningCost,
+  cleaningDays: VC.cleaningDays,
+  loadDays: VC.cargoSAIndia / D.terminalRates.SA_LOAD / 24,
+  dischDays: VC.cargoSAIndia / D.terminalRates.SA_DISCH / 24,
 };
+
+function getVessel() { return D.vesselClasses[state.vesselClass]; }
+
+function applyVesselClass(vcKey) {
+  state.vesselClass = vcKey;
+  var v = D.vesselClasses[vcKey];
+  state.ladenSpeed = v.ladenSpeed;
+  state.ballastSpeed = v.ballastSpeed;
+  state.ladenCons = v.ladenCons;
+  state.ballastCons = v.ballastCons;
+  state.portConsLoad = v.portConsLoad;
+  state.portConsDisch = v.portConsDisch;
+  state.portConsWait = v.portConsWait;
+  state.commissionPct = v.commissionPct;
+  state.cargoSAIndia = v.cargoSAIndia;
+  state.cleaningCost = v.cleaningCost;
+  state.cleaningDays = v.cleaningDays;
+  state.loadDays = v.cargoSAIndia / D.terminalRates.SA_LOAD / 24;
+  state.dischDays = v.cargoSAIndia / D.terminalRates.SA_DISCH / 24;
+  // Update param input fields if they exist
+  var paramKeys = ['ladenSpeed','ballastSpeed','ladenCons','ballastCons','portConsLoad','portConsDisch','portConsWait','commissionPct','cargoSAIndia','cleaningCost','cleaningDays','loadDays','dischDays'];
+  paramKeys.forEach(function(k) {
+    var el = document.getElementById('param_' + k);
+    if (el) el.value = typeof state[k] === 'number' ? (state[k] % 1 === 0 ? state[k] : state[k].toFixed(2)) : state[k];
+  });
+  // Update header vessel display
+  var dispVessel = document.getElementById('dispVessel');
+  if (dispVessel) dispVessel.textContent = vcKey.replace('_', '-');
+  calculateAll();
+  if (document.getElementById('tab-historical') && document.getElementById('tab-historical').classList.contains('active')) {
+    calcHistoricalBreakevens();
+  }
+  if (document.getElementById('tab-returns') && document.getElementById('tab-returns').classList.contains('active')) {
+    updateReturns();
+  }
+}
 
 // ── Helpers ──
 function fmtN(n) { return n != null ? Math.round(n).toLocaleString('en-US') : '-'; }
@@ -424,10 +470,10 @@ function getFwdBunker(type, y, m) {
 
 // Compute ballast days from distance
 function ballastDaysFromDist(dist) {
-  return dist > 0 ? (dist / (state.ballastSpeed * 24)) * D.vessel.seaMargin : 0;
+  return dist > 0 ? (dist / (state.ballastSpeed * 24)) * getVessel().seaMargin : 0;
 }
 function ladenDaysFromDist(dist) {
-  return dist > 0 ? (dist / (state.ladenSpeed * 24)) * D.vessel.seaMargin : 0;
+  return dist > 0 ? (dist / (state.ladenSpeed * 24)) * getVessel().seaMargin : 0;
 }
 function isPanamaLeg(a, b) {
   return D.panamaLegs && (D.panamaLegs[a + '|' + b] || D.panamaLegs[b + '|' + a]);
@@ -436,7 +482,7 @@ function isPanamaLeg(a, b) {
 // ── Core TCE calculation for a single-leg voyage ──
 function calcLegTCE(params) {
   // params: { ladenDist, ballastDist, cargo, rate, loadPort, dischPort, ballastPort, portDays, usesSuez }
-  var sm = D.vessel.seaMargin;
+  var sm = getVessel().seaMargin;
   var ladenDays = (params.ladenDist / (state.ladenSpeed * 24)) * sm;
   var ballastDays = params.ballastDist > 0 ? (params.ballastDist / (state.ballastSpeed * 24)) * sm : 0;
   var canalDays = 0, canalCost = 0;
@@ -482,8 +528,8 @@ function calcCompetitionTCE(openPos, routeCode, refDate) {
   var ladenDist = getDist(route.loadPort, route.dischPort);
   if (ladenDist == null) return null;
 
-  var cargo = route.cargo;
-  if (route.vesselClass === 'LR1') cargo = state.cargoMRonLR1;
+  // Vessel fills up to full intake on any FFA route
+  var cargo = getVessel().intake;
 
   // Compute arrival month at load port → determines FFA month
   var ballastToLoadDays = ballastDaysFromDist(ballastToLoad);
@@ -500,7 +546,13 @@ function calcCompetitionTCE(openPos, routeCode, refDate) {
   var ballastBackDist = getDist(route.dischPort, route.ballastBack);
   var ballastBackDays = ballastBackDist ? ballastDaysFromDist(ballastBackDist) : 0;
 
-  var portDays = 5;
+  // Port days scaled by terminal pumping rates (vessel intake / mt-per-hr / 24)
+  var tr = D.terminalRates[routeCode];
+  var loadPortDays = tr ? (cargo / tr.load / 24) : 2;
+  var dischPortDays = tr ? (cargo / tr.disch / 24) : 2;
+  var waitDays = 1;
+  var portDays = loadPortDays + dischPortDays + waitDays;
+
   var canalDays = 0, canalCost = 0;
   if (route.usesSuez) { canalDays = D.canalCosts.suez_days; canalCost = D.canalCosts.suez_laden; }
   // Panama Canal for ballast leg from opening position to load port
@@ -514,7 +566,6 @@ function calcCompetitionTCE(openPos, routeCode, refDate) {
   var gross = rate * cargo;
   var commission = (state.commissionPct / 100) * gross;
 
-  var loadPortDays = 2; var dischPortDays = 2; var waitDays = 1;
   var ladenBunker = ladenDays * state.ladenCons * voyVlsfo;
   var ballastBunker = (ballastToLoadDays + ballastBackDays) * state.ballastCons * voyVlsfo;
   var portBunkerLoad = loadPortDays * state.portConsLoad * voyLsmgo;
@@ -554,8 +605,8 @@ function calcNextVoyageTCE(fromPort, routeCode, departDate) {
   var ladenDist = getDist(route.loadPort, route.dischPort);
   if (ladenDist == null) return null;
 
-  var cargo = route.cargo;
-  if (route.vesselClass === 'LR1') cargo = state.cargoMRonLR1;
+  // Vessel fills up to full intake on any FFA route
+  var cargo = getVessel().intake;
 
   var b2lDays = ballastDaysFromDist(ballastToLoad);
   var arrivalDate = addDays(departDate, b2lDays);
@@ -567,7 +618,12 @@ function calcNextVoyageTCE(fromPort, routeCode, departDate) {
   var voyLsmgo = getFwdBunker('LSMGO', aYM.y, aYM.m);
 
   var ladenDays = ladenDaysFromDist(ladenDist);
-  var portDays = 5;
+  // Port days scaled by terminal pumping rates
+  var tr = D.terminalRates[routeCode];
+  var loadPortDays = tr ? (cargo / tr.load / 24) : 2;
+  var dischPortDays = tr ? (cargo / tr.disch / 24) : 2;
+  var waitDays = 1;
+  var portDays = loadPortDays + dischPortDays + waitDays;
   var canalDays = 0, canalCost = 0;
   if (route.usesSuez) { canalDays = D.canalCosts.suez_days; canalCost = D.canalCosts.suez_laden; }
 
@@ -577,9 +633,9 @@ function calcNextVoyageTCE(fromPort, routeCode, departDate) {
   var commission = (state.commissionPct / 100) * gross;
   var ladenBunker = ladenDays * state.ladenCons * voyVlsfo;
   var ballastBunker = b2lDays * state.ballastCons * voyVlsfo;
-  var portBunkerLoad = 2 * state.portConsLoad * voyLsmgo;
-  var portBunkerDisch = 2 * state.portConsDisch * voyVlsfo;
-  var portBunkerWait = 1 * state.portConsWait * voyLsmgo;
+  var portBunkerLoad = loadPortDays * state.portConsLoad * voyLsmgo;
+  var portBunkerDisch = dischPortDays * state.portConsDisch * voyVlsfo;
+  var portBunkerWait = (waitDays + canalDays) * state.portConsWait * voyLsmgo;
   var totalBunker = ladenBunker + ballastBunker + portBunkerLoad + portBunkerDisch + portBunkerWait;
   var loadPC = getPC(route.loadPort);
   var dischPC = getPC(route.dischPort);
@@ -662,14 +718,14 @@ function calcSAIndiaTCE(openPos, rate, refDate) {
   var voyLsmgo = getFwdBunker('LSMGO', vYM.y, vYM.m);
 
   // River transit up (1 day at reduced speed)
-  var riverUpDays = D.vessel.riverDays;
+  var riverUpDays = getVessel().riverDays;
 
   // Timbues → Paranaguá (coastal, laden)
   var t2pDist = getDist('Timbues', 'Paranagua');
   var t2pDays = t2pDist ? ladenDaysFromDist(t2pDist) : 0;
 
   // River transit down
-  var riverDownDays = D.vessel.riverDays;
+  var riverDownDays = getVessel().riverDays;
 
   // Paranaguá → first discharge port
   var p2d1Dist = getDist('Paranagua', ports[0]);
@@ -768,10 +824,10 @@ function calcSADestTCE(rate, destKey, refDate) {
   var voyVlsfo = getFwdBunker('VLSFO', vYM.y, vYM.m);
   var voyLsmgo = getFwdBunker('LSMGO', vYM.y, vYM.m);
 
-  var riverUpDays = D.vessel.riverDays;
+  var riverUpDays = getVessel().riverDays;
   var t2pDist = getDist('Timbues', 'Paranagua');
   var t2pDays = t2pDist ? ladenDaysFromDist(t2pDist) : 0;
-  var riverDownDays = D.vessel.riverDays;
+  var riverDownDays = getVessel().riverDays;
 
   // Paranagua → first discharge port
   var p2d1Dist = getDist('Paranagua', ports[0]);
@@ -958,7 +1014,7 @@ function showDrillDown(pos) {
   var r = lastResults[pos];
   if (!r || r.error) return;
 
-  document.getElementById('modalTitle').textContent = pos + ' — Voyage Breakdown';
+  document.getElementById('modalTitle').textContent = pos + ' — Voyage Breakdown (' + state.vesselClass.replace('_', '-') + ')';
   var html = '';
 
   // SA→India breakdown
@@ -973,7 +1029,9 @@ function showDrillDown(pos) {
   html += '<tr><td>  Ballast to Timbues</td><td class="num-right">' + fmtD(sa.ballastDays, 1) + ' days</td></tr>';
   html += '<tr><td>  River transit (up+down)</td><td class="num-right">' + fmtD(sa.riverDays, 1) + ' days</td></tr>';
   html += '<tr><td>  Laden sea days</td><td class="num-right">' + fmtD(sa.ladenDays, 1) + ' days</td></tr>';
-  html += '<tr><td>  Port days (load+disch)</td><td class="num-right">' + fmtD(sa.portDaysTotal, 1) + ' days</td></tr>';
+  var saLoadHrs = state.cargoSAIndia / D.terminalRates.SA_LOAD;
+  var saDischHrs = state.cargoSAIndia / D.terminalRates.SA_DISCH;
+  html += '<tr><td>  Port days (load+disch)</td><td class="num-right">' + fmtD(sa.portDaysTotal, 1) + ' days (' + fmtD(saLoadHrs, 0) + 'h + ' + fmtD(saDischHrs, 0) + 'h)</td></tr>';
   html += '<tr><td>  Cleaning</td><td class="num-right">' + fmtD(sa.cleanDays, 1) + ' days</td></tr>';
   html += '<tr><td>  Ballast to AG</td><td class="num-right">(incl. in ballast)</td></tr>';
   html += '<tr class="section-row"><td>Costs</td><td class="num-right"></td></tr>';
@@ -1000,7 +1058,10 @@ function showDrillDown(pos) {
   html += '<tr><td>  Ballast to load</td><td class="num-right">' + fmtD(comp.ballastToLoadDays, 1) + ' days</td></tr>';
   html += '<tr><td>  Laden</td><td class="num-right">' + fmtD(comp.ladenDays, 1) + ' days</td></tr>';
   html += '<tr><td>  Ballast back</td><td class="num-right">' + fmtD(comp.ballastBackDays, 1) + ' days</td></tr>';
-  html += '<tr><td>  Port</td><td class="num-right">' + fmtD(comp.portDays, 1) + ' days</td></tr>';
+  var compTr = D.terminalRates[best.route];
+  var compLoadHrs = compTr ? (comp.cargo / compTr.load) : 48;
+  var compDischHrs = compTr ? (comp.cargo / compTr.disch) : 48;
+  html += '<tr><td>  Port</td><td class="num-right">' + fmtD(comp.portDays, 1) + ' days (' + fmtD(compLoadHrs, 0) + 'h + ' + fmtD(compDischHrs, 0) + 'h + 24h wait)</td></tr>';
   if (comp.canalDays > 0) html += '<tr><td>  Canal (wait+transit)</td><td class="num-right">' + fmtD(comp.canalDays, 1) + ' days ($' + fmtN(comp.canalCost) + ')</td></tr>';
   html += '<tr class="section-row"><td>Competition TCE</td><td class="num-right" style="color:var(--blue);">$' + fmtN(comp.tce) + '/day</td></tr>';
   if (best.nextVoy) {
@@ -1042,8 +1103,10 @@ function updateReturns() {
     var competition = calcBestCompetition(pos, refDate);
     if (!competition || !competition.best) return;
 
-    var saTce = state.nextVoyage ? saVoy.combinedTce : saVoy.tce;
-    var compTce = state.nextVoyage ? competition.best.combinedTce : competition.best.tce;
+    // Returns tab always uses single-voyage TCE (not combined with next voyage)
+    // so the user sees the true economics of the ECSA leg at the given rate
+    var saTce = saVoy.tce;
+    var compTce = competition.best.tce;
     var margin = saTce - compTce;
 
     results.push({
@@ -1087,8 +1150,7 @@ function renderReturnCard(grid, r) {
   var allCompsText = '';
   if (!r.isAverage && r.competition.all) {
     allCompsText = r.competition.all.map(function(c) {
-      var t = state.nextVoyage ? c.combinedTce : c.tce;
-      return c.route + ' $' + fmtN(t) + '/d';
+      return c.route + ' $' + fmtN(c.tce) + '/d';
     }).join(' | ');
   }
 
@@ -1099,7 +1161,7 @@ function renderReturnCard(grid, r) {
       '<span class="rc-position">' + r.pos + '</span>' +
       '<span class="rc-region">' + r.region + '</span>' +
     '</div>' +
-    '<div class="rc-breakeven" style="color:' + marginColor + '">' + marginSign + '$' + fmtN(Math.abs(r.margin)) + '/d</div>' +
+    '<div class="rc-breakeven" style="color:' + marginColor + '">' + (r.margin < 0 ? '-' : '+') + '$' + fmtN(Math.abs(r.margin)) + '/d</div>' +
     '<div class="rc-breakeven-unit">vs best alternative (' + bestRoute + ')</div>' +
     '<div class="rc-details">' +
       '<div class="rc-detail"><span class="rc-dlabel">SA→India TCE </span><span class="rc-dvalue" style="color:var(--text-bright)">$' + fmtN(r.saTce) + '/d</span></div>' +
@@ -1826,31 +1888,51 @@ function renderAssumptions(sub) {
   var html = '';
 
   if (currentAssumeSub === 'vessel') {
-    html += '<div class="assume-section">MR50 Vessel Specifications (Baltic Exchange Standard)</div>';
-    html += '<div class="assume-grid"><div>';
-    html += '<table class="assume-table"><thead><tr><th>Parameter</th><th class="num">Value</th><th>Unit</th></tr></thead><tbody>';
-    var v = D.vessel;
-    var rows = [
-      ['Vessel Type', v.name, ''],
-      ['Deadweight', fmtN(v.dwt), 'mt'],
-      ['SA→India Cargo', fmtN(v.cargoSAIndia), 'mt'],
-      ['MR on LR1 Routes', fmtN(v.cargoMRonLR1), 'mt'],
-      ['Laden Speed', fmtD(v.ladenSpeed, 1), 'knots'],
-      ['Ballast Speed', fmtD(v.ballastSpeed, 1), 'knots'],
-      ['Sea Margin', ((v.seaMargin - 1) * 100).toFixed(0) + '%', ''],
+    var v = getVessel();
+    html += '<div class="assume-section">' + v.name + ' — Selected Vessel (Baltic Exchange Standard)</div>';
+
+    // All vessel classes comparison table
+    html += '<table class="assume-table"><thead><tr><th>Parameter</th>';
+    var vcKeys = Object.keys(D.vesselClasses);
+    vcKeys.forEach(function(k) {
+      var isActive = k === state.vesselClass;
+      html += '<th class="num" style="' + (isActive ? 'color:var(--gold);font-weight:600;' : '') + '">' + k + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+    var compRows = [
+      ['DWT', function(vc) { return fmtN(vc.dwt); }],
+      ['Intake', function(vc) { return fmtN(vc.intake); }],
+      ['SA→India Cargo', function(vc) { return fmtN(vc.cargoSAIndia); }],
+      ['Laden Speed (kn)', function(vc) { return fmtD(vc.ladenSpeed, 1); }],
+      ['Ballast Speed (kn)', function(vc) { return fmtD(vc.ballastSpeed, 1); }],
+      ['Laden Cons (mt/d)', function(vc) { return fmtD(vc.ladenCons, 1); }],
+      ['Ballast Cons (mt/d)', function(vc) { return fmtD(vc.ballastCons, 1); }],
+      ['Port Load (mt/d)', function(vc) { return fmtD(vc.portConsLoad, 1); }],
+      ['Port Disch (mt/d)', function(vc) { return fmtD(vc.portConsDisch, 1); }],
+      ['Port Wait (mt/d)', function(vc) { return fmtD(vc.portConsWait, 1); }],
     ];
-    rows.forEach(function(r) { html += '<tr><td>' + r[0] + '</td><td class="num">' + r[1] + '</td><td>' + r[2] + '</td></tr>'; });
-    html += '</tbody></table></div><div>';
-    html += '<table class="assume-table"><thead><tr><th>Consumption</th><th class="num">Value</th><th>Fuel</th></tr></thead><tbody>';
-    var cons = [
-      ['Laden', fmtD(v.ladenCons, 1), 'mt/day VLSFO'],
-      ['Ballast', fmtD(v.ballastCons, 1), 'mt/day VLSFO'],
-      ['Port — Loading', fmtD(v.portConsLoad, 1), 'mt/day LSMGO'],
-      ['Port — Discharge', fmtD(v.portConsDisch, 1), 'mt/day VLSFO'],
-      ['Port — Waiting', fmtD(v.portConsWait, 1), 'mt/day LSMGO'],
-    ];
-    cons.forEach(function(r) { html += '<tr><td>' + r[0] + '</td><td class="num">' + r[1] + '</td><td>' + r[2] + '</td></tr>'; });
-    html += '</tbody></table></div></div>';
+    compRows.forEach(function(row) {
+      html += '<tr><td>' + row[0] + '</td>';
+      vcKeys.forEach(function(k) {
+        var isActive = k === state.vesselClass;
+        html += '<td class="num" style="' + (isActive ? 'color:var(--gold);' : '') + '">' + row[1](D.vesselClasses[k]) + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+
+    // Terminal pumping rates
+    html += '<div class="assume-section">Terminal Pumping Rates (mt/hr)</div>';
+    html += '<table class="assume-table"><thead><tr><th>Route</th><th class="num">Load (mt/hr)</th><th class="num">Disch (mt/hr)</th><th class="num">Laytime @ ' + fmtN(v.intake) + ' mt (hrs)</th></tr></thead><tbody>';
+    Object.keys(D.terminalRates).forEach(function(k) {
+      if (k === 'SA_LOAD' || k === 'SA_DISCH') return;
+      var tr = D.terminalRates[k];
+      var loadHrs = (v.intake / tr.load).toFixed(1);
+      var dischHrs = (v.intake / tr.disch).toFixed(1);
+      html += '<tr><td>' + k + '</td><td class="num">' + tr.load + '</td><td class="num">' + tr.disch + '</td><td class="num">' + loadHrs + ' / ' + dischHrs + '</td></tr>';
+    });
+    html += '<tr><td>SA Physical</td><td class="num">' + D.terminalRates.SA_LOAD + '</td><td class="num">' + D.terminalRates.SA_DISCH + '</td><td class="num">' + (v.cargoSAIndia / D.terminalRates.SA_LOAD).toFixed(1) + ' / ' + (v.cargoSAIndia / D.terminalRates.SA_DISCH).toFixed(1) + '</td></tr>';
+    html += '</tbody></table>';
 
     html += '<div class="assume-section">Other</div>';
     html += '<table class="assume-table" style="max-width:500px;"><tbody>';
@@ -1865,11 +1947,15 @@ function renderAssumptions(sub) {
   else if (currentAssumeSub === 'voyage') {
     html += '<div class="assume-section">SA→India Voyage Structure</div>';
     html += '<table class="assume-table" style="max-width:600px;"><tbody>';
-    html += '<tr><td>Load Port 1</td><td class="num">Timbues — 30,000 mt (upriver)</td></tr>';
-    html += '<tr><td>Load Port 2</td><td class="num">Paranaguá — 10,000 mt (coastal)</td></tr>';
-    html += '<tr><td>Total Cargo</td><td class="num">40,000 mt</td></tr>';
-    html += '<tr><td>Loading Laytime</td><td class="num">200 hours (' + fmtD(D.laytime.loadHours / 24, 1) + ' days)</td></tr>';
-    html += '<tr><td>Discharge Laytime</td><td class="num">200 hours (' + fmtD(D.laytime.dischHours / 24, 1) + ' days)</td></tr>';
+    var sv = getVessel();
+    var saLoadHrs = sv.cargoSAIndia / D.terminalRates.SA_LOAD;
+    var saDischHrs = sv.cargoSAIndia / D.terminalRates.SA_DISCH;
+    html += '<tr><td>Vessel</td><td class="num" style="color:var(--gold);">' + sv.name + ' (intake ' + fmtN(sv.intake) + ' mt)</td></tr>';
+    html += '<tr><td>SA→India Cargo</td><td class="num">' + fmtN(sv.cargoSAIndia) + ' mt</td></tr>';
+    html += '<tr><td>FFA Route Cargo</td><td class="num">' + fmtN(sv.intake) + ' mt (full intake)</td></tr>';
+    html += '<tr><td>Loading Laytime</td><td class="num">' + fmtD(saLoadHrs, 0) + ' hours (' + fmtD(saLoadHrs / 24, 1) + ' days)</td></tr>';
+    html += '<tr><td>Discharge Laytime</td><td class="num">' + fmtD(saDischHrs, 0) + ' hours (' + fmtD(saDischHrs / 24, 1) + ' days)</td></tr>';
+    html += '<tr><td>SA Terminal Rate</td><td class="num">' + D.terminalRates.SA_LOAD + ' mt/hr load, ' + D.terminalRates.SA_DISCH + ' mt/hr disch</td></tr>';
     html += '<tr><td>WCI Discharge</td><td class="num">Mundra + Kandla</td></tr>';
     html += '<tr><td>ECI Discharge</td><td class="num">Chennai + Haldia</td></tr>';
     html += '<tr><td>Post-Discharge Ballast</td><td class="num">→ Ras Tanura (AG)</td></tr>';
@@ -2043,7 +2129,7 @@ function renderAssumptions(sub) {
       html += '<tr><td>' + code + '</td><td>' + r.desc + '</td><td>' + r.loadPort + '</td><td>' + r.dischPort + '</td><td class="num">' + fmtN(r.cargo) + '</td><td>' + r.vesselClass + '</td><td>' + r.ballastBack + '</td></tr>';
     });
     html += '</tbody></table>';
-    html += '<div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:var(--font-mono);">For LR1 routes (TC5, TC12), MR cargo is capped at ' + fmtN(D.vessel.cargoMRonLR1) + ' mt. Competition port days: 2d load + 2d discharge + 1d wait.</div>';
+    html += '<div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:var(--font-mono);">Vessel loads full intake (' + fmtN(getVessel().intake) + ' mt) on FFA routes. Port days scale by terminal pumping rate (cargo/mt-per-hr). SA→India cargo capped by draft.</div>';
 
     if (D.destinationRegions) {
       html += '<div class="assume-section">Destination Regions (Range Map — "To" Mode)</div>';
@@ -2125,11 +2211,10 @@ function init() {
     { key: 'portConsDisch', label: 'Port Cons Disch (mt/d)', val: state.portConsDisch },
     { key: 'commissionPct', label: 'Commission (%)', val: state.commissionPct },
     { key: 'cargoSAIndia', label: 'SA→India Cargo (mt)', val: state.cargoSAIndia },
-    { key: 'cargoMRonLR1', label: 'MR on LR1 Cargo (mt)', val: state.cargoMRonLR1 },
     { key: 'cleaningCost', label: 'Cleaning Cost ($)', val: state.cleaningCost },
     { key: 'cleaningDays', label: 'Cleaning Days', val: state.cleaningDays },
-    { key: 'loadDays', label: 'Load Days (200hr)', val: state.loadDays },
-    { key: 'dischDays', label: 'Disch Days (200hr)', val: state.dischDays },
+    { key: 'loadDays', label: 'SA Load Days', val: state.loadDays },
+    { key: 'dischDays', label: 'SA Disch Days', val: state.dischDays },
   ];
   params.forEach(function(p) {
     var div = document.createElement('div');
@@ -2171,6 +2256,15 @@ function init() {
       if (document.getElementById('tab-returns').classList.contains('active')) {
         updateReturns();
       }
+    });
+  });
+
+  // Toggle: vessel class
+  document.querySelectorAll('#vesselToggle .toggle-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('#vesselToggle .toggle-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      applyVesselClass(btn.dataset.val);
     });
   });
 
