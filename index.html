@@ -833,33 +833,47 @@ function calcSADestTCE(rate, destKey, refDate) {
   var p2d1Dist = getDist('Paranagua', ports[0]);
   var p2d1Days = p2d1Dist ? ladenDaysFromDist(p2d1Dist) : 0;
 
-  // Between discharge ports
-  var d1d2Dist = getDist(ports[0], ports[1]);
+  // Between discharge ports (skip if single-port route)
+  var d1d2Dist = ports.length > 1 ? getDist(ports[0], ports[1]) : 0;
   var d1d2Days = d1d2Dist ? ladenDaysFromDist(d1d2Dist) : 0;
 
   // Ballast from last discharge to hub
-  var d2hDist = getDist(ports[1], dest.ballastAfter);
+  var lastPort = ports[ports.length - 1];
+  var d2hDist = getDist(lastPort, dest.ballastAfter);
   var d2hDays = d2hDist ? ballastDaysFromDist(d2hDist) : 0;
 
-  // Panama for post-discharge ballast (e.g., Peru → Houston)
+  // Panama laden canal (timbuesOnly routes via Panama on the laden voyage, e.g. Timbues→LA)
+  var ladenCanalDays = 0, ladenCanalCost = 0;
+  if (dest.panamaLaden && D.canalCosts.panama_laden) {
+    ladenCanalDays = D.canalCosts.panama_laden_days;
+    ladenCanalCost = D.canalCosts.panama_laden;
+  }
+
+  // Panama for post-discharge ballast
   var postCanalDays = 0, postCanalCost = 0;
   if (dest.panamaBalAfter) {
+    postCanalDays = D.canalCosts.panama_waitDays;
+    postCanalCost = D.canalCosts.panama_ballast;
+  } else if (D.panamaLegs && D.panamaLegs[lastPort + '|' + dest.ballastAfter]) {
     postCanalDays = D.canalCosts.panama_waitDays;
     postCanalCost = D.canalCosts.panama_ballast;
   }
 
   var totalCleanDays = state.cleaningDays * 2;
   var totalCleanCost = state.cleaningCost * 2;
-  var loadPortDays = state.loadDays;
-  var dischPortDays = state.dischDays;
+
+  // Cargo and laytime: timbuesOnly routes use fixed per-route values; standard routes use vessel state
+  var cargo = dest.timbuesOnly ? dest.cargo : state.cargoSAIndia;
+  var loadPortDays = dest.timbuesOnly ? (dest.loadHours / 24) : state.loadDays;
+  var dischPortDays = dest.timbuesOnly ? (dest.dischHours / 24) : state.dischDays;
   var totalPortDays = loadPortDays + dischPortDays;
 
-  var totalLadenDays = t2pDays + p2d1Days + d1d2Days;
+  var totalLadenDays = t2pDays + p2d1Days + d1d2Days + ladenCanalDays;
   var totalBallastDays = b2tDays + d2hDays;
   var totalRiverDays = riverUpDays + riverDownDays;
   var totalDays = totalBallastDays + totalRiverDays + totalLadenDays + totalPortDays + totalCleanDays + postCanalDays;
 
-  var gross = rate * state.cargoSAIndia;
+  var gross = rate * cargo;
   var commission = (state.commissionPct / 100) * gross;
 
   var ladenBunker = (totalLadenDays + totalRiverDays) * state.ladenCons * voyVlsfo;
@@ -868,8 +882,16 @@ function calcSADestTCE(rate, destKey, refDate) {
   var portBunkerDisch = dischPortDays * state.portConsDisch * voyVlsfo;
   var totalBunker = ladenBunker + ballastBunker + portBunkerLoad + portBunkerDisch;
 
-  var portCosts = getPC('Timbues') + getPC('Paranagua') + getPC(ports[0]) + getPC(ports[1]);
-  var totalCosts = totalBunker + portCosts + totalCleanCost + postCanalCost;
+  // Port costs: timbuesOnly routes load only at Timbues (no Paranaguá call)
+  var portCosts;
+  if (dest.timbuesOnly) {
+    portCosts = getPC('Timbues');
+    ports.forEach(function(p) { portCosts += getPC(p); });
+  } else {
+    portCosts = getPC('Timbues') + getPC('Paranagua') + getPC(ports[0]) + getPC(ports[1]);
+  }
+
+  var totalCosts = totalBunker + portCosts + totalCleanCost + ladenCanalCost + postCanalCost;
   var netRev = gross - commission - totalCosts;
   var tce = totalDays > 0 ? netRev / totalDays : 0;
 
@@ -1725,6 +1747,11 @@ var PORT_COORDS = {
   'Amsterdam':    [52.38, 4.9],
   'Algeciras':    [36.13, -5.45],
   'Huelva':       [37.25, -6.95],
+  // New timbuesOnly destination ports
+  'Los Angeles':  [33.73, -118.26],
+  'Alexandria':   [31.20, 29.90],
+  'Damietta':     [31.42, 31.82],
+  'Cartagena':    [10.40, -75.52],  // Colombia
 };
 
 var rangeMode = 'from'; // 'from' = from opening ports, 'to' = to destination ports

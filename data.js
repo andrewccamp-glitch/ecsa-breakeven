@@ -122,17 +122,28 @@ const ECSA_DATA = {
   },
 
   // ── Destination Regions (for "To Destination" range map mode) ──
-  // Each region: 2 discharge ports, post-discharge ballast hub, next voyage options
+  // Each region: discharge port(s), post-discharge ballast hub, next voyage options
+  // timbuesOnly: true → load only at Timbues (fixed cargo + laytime), no Paranaguá stop
+  // cargo/loadHours/dischHours: route-specific (overrides vessel state for timbuesOnly routes)
   destinationRegions: {
+    // ── Standard SA→region routes (Timbues + Paranaguá, vessel-dependent cargo) ──
     WCI:    { label: "West Coast India",  ports: ["Mundra", "Kandla"],        ballastAfter: "Ras Tanura", nextVoyageOptions: ["TC17", "TC5", "TC12"] },
     ECI:    { label: "East Coast India",  ports: ["Chennai", "Haldia"],       ballastAfter: "Ras Tanura", nextVoyageOptions: ["TC17", "TC5", "TC12"] },
     SChina: { label: "South China",       ports: ["Zhanjiang", "Huizhou"],    ballastAfter: "Ras Tanura", nextVoyageOptions: ["TC17", "TC5", "TC12"] },
     NChina: { label: "North China",       ports: ["Qingdao", "Tianjin"],      ballastAfter: "Ras Tanura", nextVoyageOptions: ["TC17", "TC5", "TC12"] },
     Peru:   { label: "Peru",              ports: ["Callao", "La Pampilla"],   ballastAfter: "Houston",    nextVoyageOptions: ["TC14"],                panamaBalAfter: true },
-    USG:    { label: "US Gulf",           ports: ["Houston", "New Orleans"],   ballastAfter: "Houston",    nextVoyageOptions: ["TC14"] },
-    NYH:    { label: "New York Harbor",   ports: ["New York", "Philadelphia"], ballastAfter: "Houston",    nextVoyageOptions: ["TC14"] },
-    NLD:    { label: "Netherlands",       ports: ["Rotterdam", "Amsterdam"],   ballastAfter: "Rotterdam",  nextVoyageOptions: ["TC2"] },
+    USG:    { label: "US Gulf",           ports: ["Houston", "New Orleans"],  ballastAfter: "Houston",    nextVoyageOptions: ["TC14"] },
+    NYH:    { label: "New York Harbor",   ports: ["New York", "Philadelphia"],ballastAfter: "Houston",    nextVoyageOptions: ["TC14"] },
+    NLD:    { label: "Netherlands",       ports: ["Rotterdam", "Amsterdam"],  ballastAfter: "Rotterdam",  nextVoyageOptions: ["TC2"] },
     SSpain: { label: "South Spain",       ports: ["Algeciras", "Huelva"],     ballastAfter: "Skikda",     nextVoyageOptions: ["TC6", "TC2"] },
+    // ── Timbues-only fixed-cargo routes ──
+    // loadHours/dischHours = CP laytime; terminal rate = cargo/hours
+    LAUSC:   { label: "Los Angeles",           ports: ["Los Angeles"],            cargo: 30000, loadHours: 200, dischHours: 200, timbuesOnly: true, panamaLaden: true, ballastAfter: "Houston",   nextVoyageOptions: ["TC14"] },
+    AratuBR: { label: "Aratu (Brazil)",        ports: ["Aratu"],                  cargo: 18000, loadHours: 150, dischHours: 150, timbuesOnly: true,                    ballastAfter: "Rotterdam",  nextVoyageOptions: ["TC2", "TC6"] },
+    WAF12:   { label: "Accra + Lagos",         ports: ["Accra", "Lagos"],         cargo: 12000, loadHours: 150, dischHours: 150, timbuesOnly: true,                    ballastAfter: "Rotterdam",  nextVoyageOptions: ["TC2", "TC6"] },
+    Alex20:  { label: "Alexandria",            ports: ["Alexandria"],             cargo: 20000, loadHours: 200, dischHours: 200, timbuesOnly: true,                    ballastAfter: "Skikda",     nextVoyageOptions: ["TC6", "TC2"] },
+    AlexDam: { label: "Alex + Damietta",       ports: ["Alexandria", "Damietta"], cargo: 32000, loadHours: 200, dischHours: 200, timbuesOnly: true,                    ballastAfter: "Skikda",     nextVoyageOptions: ["TC6", "TC2"] },
+    Cart:    { label: "Cartagena (Colombia)",  ports: ["Cartagena"],              cargo: 12000, loadHours: 150, dischHours: 150, timbuesOnly: true,                    ballastAfter: "Houston",    nextVoyageOptions: ["TC14"] },
   },
 
   // ── Distance Matrix (nm) ──
@@ -247,6 +258,14 @@ const ECSA_DATA = {
     "Paranagua|Amsterdam":   6050,
     "Paranagua|Algeciras":   5300,
     "Paranagua|Huelva":      5350,
+    // New timbuesOnly destination routes (from Paranaguá waypoint after river down)
+    "Paranagua|Los Angeles": 5700,   // via Panama Canal (laden — panamaLaden flag applies)
+    "Paranagua|Aratu":       1600,   // coastal north along Brazilian coast
+    "Paranagua|Accra":       5200,   // Atlantic crossing to West Africa
+    "Paranagua|Lagos":       5600,   // Atlantic crossing (further east)
+    "Paranagua|Alexandria":  7500,   // Atlantic north + Gibraltar + Med
+    "Paranagua|Damietta":    7600,   // Atlantic north + Gibraltar + Med (Nile Delta)
+    "Paranagua|Cartagena":   3800,   // north along Brazilian coast + Caribbean (Colombia)
 
     // === Between destination port pairs ===
     "Zhanjiang|Huizhou":     300,     // South China coastal
@@ -254,6 +273,7 @@ const ECSA_DATA = {
     "Callao|La Pampilla":    5,       // same port complex
     "New York|Philadelphia": 80,
     "Algeciras|Huelva":      120,
+    "Alexandria|Damietta":   120,    // Med coastal (eastern Med)
     // Existing pairs: Mundra|Kandla 150, Chennai|Haldia 700, Houston|New Orleans 360, Amsterdam|Rotterdam 60
 
     // === Post-discharge ballast to hub ===
@@ -266,6 +286,12 @@ const ECSA_DATA = {
     "La Pampilla|Houston":   3100,    // via Panama Canal
     "Philadelphia|Houston":  1700,
     "Huelva|Skikda":         700,
+    // New post-discharge ballast distances
+    "Los Angeles|Houston":   4400,   // via Panama Canal (flagged in panamaLegs)
+    "Aratu|Rotterdam":       4800,   // Atlantic northward
+    "Alexandria|Skikda":     1300,   // western Med
+    "Damietta|Skikda":       1450,   // Med westward
+    "Cartagena|Houston":     1600,   // Caribbean to US Gulf (Colombia)
 
     // === TC route laden distances ===
     "Houston|Amsterdam":     4850,
@@ -320,6 +346,10 @@ const ECSA_DATA = {
     "Tianjin":        60000,
     "Qingdao":        55000,
     "La Pampilla":    45000,
+    "Los Angeles":    50000,
+    "Alexandria":     55000,
+    "Damietta":       55000,
+    "Cartagena":      40000,   // Colombia
   },
 
   // ── Canal Costs ──
@@ -327,8 +357,10 @@ const ECSA_DATA = {
     suez_laden:   250000,
     suez_ballast: 200000,
     suez_days:    1.0,
-    panama_ballast: 150000,  // MR ballast transit (~$100-150k for clean MR)
-    panama_waitDays: 2.0,    // average wait + transit time
+    panama_ballast:    150000,  // MR ballast transit (~$100-150k for clean MR)
+    panama_waitDays:   2.0,     // average wait + transit time
+    panama_laden:      150000,  // MR laden transit (clean product)
+    panama_laden_days: 2.0,     // average wait + transit time laden
   },
 
   // ── Panama Canal Legs ──
@@ -343,5 +375,13 @@ const ECSA_DATA = {
     "San Antonio|Houston":   true,   // Chile → USG via Panama
     "San Antonio|Rotterdam": true,   // Chile → NW Europe via Panama
     "San Antonio|Skikda":    true,   // Chile → Med via Panama
+    // Post-discharge ballast via Panama (timbuesOnly destination routes)
+    "Los Angeles|Houston":   true,   // USWC → USG after LA discharge
+  },
+
+  // ── Panama Canal Laden Legs ──
+  // Timbues→destination routes that require Panama Canal on the laden voyage
+  panamaLadenLegs: {
+    "Paranagua|Los Angeles": true,   // Timbues load → USWC via Panama
   },
 };
