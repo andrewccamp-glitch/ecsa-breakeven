@@ -1335,6 +1335,85 @@ function renderForwardBreakevens() {
   html += '</tbody>';
   table.innerHTML = html;
 
+  // ── Quarterly summary table (separate, below main table) ──
+  var qContainer = document.getElementById('fwdQuarterlyTable');
+  if (!qContainer) {
+    // Create container after main table
+    var mainTable = document.getElementById('fwdTable');
+    qContainer = document.createElement('table');
+    qContainer.id = 'fwdQuarterlyTable';
+    qContainer.style.cssText = 'width:100%;border-collapse:collapse;margin-top:14px;font-size:11px;font-family:"IBM Plex Mono",monospace;';
+    mainTable.parentNode.insertBefore(qContainer, mainTable.nextSibling);
+  }
+
+  var quarters = [];
+  var yearsSeen = {};
+  fwdMonths.forEach(function(fm) {
+    var qNum = Math.ceil(fm.m / 3);
+    var key = 'Q' + qNum + ' ' + String(fm.y).slice(2);
+    if (!yearsSeen[key]) {
+      yearsSeen[key] = true;
+      // Only include Q2, Q3, Q4 (Q1 is Jan-Mar, unlikely in fwd window)
+      if (qNum >= 2) quarters.push({ label: key, qNum: qNum, year: fm.y, months: [qNum*3-2, qNum*3-1, qNum*3] });
+    }
+  });
+
+  // Compute quarterly averages
+  var qAvgFfa = {};
+  ffaDisplayRoutes.forEach(function(rc) { qAvgFfa[rc] = {}; });
+  var qAvgBe = {};
+
+  quarters.forEach(function(q) {
+    ffaDisplayRoutes.forEach(function(rc) {
+      var vals = [];
+      fwdMonths.forEach(function(fm, fi) {
+        if (fm.y === q.year && q.months.indexOf(fm.m) !== -1 && ffaFwdData[rc][fi] != null) vals.push(ffaFwdData[rc][fi]);
+      });
+      qAvgFfa[rc][q.label] = vals.length > 0 ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : null;
+    });
+    var beVals = [];
+    fwdMonths.forEach(function(fm, fi) {
+      if (fm.y === q.year && q.months.indexOf(fm.m) !== -1 && results['Average'][fi] && results['Average'][fi].breakeven != null) beVals.push(results['Average'][fi].breakeven);
+    });
+    qAvgBe[q.label] = beVals.length > 0 ? beVals.reduce(function(a, b) { return a + b; }, 0) / beVals.length : null;
+  });
+
+  if (quarters.length > 0) {
+    var qHtml = '<thead><tr><th style="text-align:left;padding:4px 8px;color:var(--text-dim);font-size:10px;border-bottom:1px solid var(--border);">Quarterly Avg</th>';
+    quarters.forEach(function(q) { qHtml += '<th style="text-align:right;padding:4px 8px;color:var(--text-dim);font-size:10px;border-bottom:1px solid var(--border);">' + q.label + '</th>'; });
+    qHtml += '</tr></thead><tbody>';
+
+    // FFA $/mt rows
+    ffaDisplayRoutes.forEach(function(rc) {
+      qHtml += '<tr style="background:rgba(74,142,194,0.06);"><td style="padding:3px 8px;color:var(--blue);">' + rc + ' $/mt</td>';
+      quarters.forEach(function(q) {
+        var v = qAvgFfa[rc][q.label];
+        qHtml += '<td style="text-align:right;padding:3px 8px;color:var(--blue);">' + (v != null ? '$' + fmtD(v, 1) : '-') + '</td>';
+      });
+      qHtml += '</tr>';
+    });
+
+    // Separator
+    qHtml += '<tr><td colspan="' + (quarters.length + 1) + '" style="border-bottom:1px solid var(--border);padding:0;height:4px;"></td></tr>';
+
+    // Avg B/E row
+    qHtml += '<tr style="font-weight:600;background:rgba(176,108,207,0.08);"><td style="padding:3px 8px;color:#b06ccf;">Avg B/E (ECSA→India)</td>';
+    quarters.forEach(function(q) {
+      var v = qAvgBe[q.label];
+      if (v != null) {
+        var color = v > 60 ? 'var(--red)' : v > 40 ? 'var(--amber)' : 'var(--green)';
+        qHtml += '<td style="text-align:right;padding:3px 8px;color:' + color + ';">$' + fmtD(v, 1) + '</td>';
+      } else {
+        qHtml += '<td style="text-align:right;padding:3px 8px;color:var(--text-dim);">-</td>';
+      }
+    });
+    qHtml += '</tr></tbody>';
+    qContainer.innerHTML = qHtml;
+    qContainer.style.display = '';
+  } else {
+    if (qContainer) qContainer.style.display = 'none';
+  }
+
   // Render chart — line chart per position (Average first and prominent)
   var datasets = [];
   var fwdPosColors = { Average: '#b06ccf', Mejillones: '#c9a84c', Recalada: '#d4a833', Santos: '#3d9a50', Aratu: '#c04040', Accra: '#8a7234', Rotterdam: '#4a8ec2', 'New Orleans': '#6e6e76', 'New York': '#c8c8cc', Lavera: '#9b59b6' };
