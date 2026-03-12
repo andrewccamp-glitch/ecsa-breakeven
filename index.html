@@ -1383,7 +1383,7 @@ function renderForwardBreakevens() {
     quarters.forEach(function(q) { qHtml += '<th style="text-align:right;padding:4px 8px;color:var(--text-dim);font-size:10px;border-bottom:1px solid var(--border);">' + q.label + '</th>'; });
     qHtml += '</tr></thead><tbody>';
 
-    // FFA $/mt rows
+    // FFA $/mt + WS rows
     ffaDisplayRoutes.forEach(function(rc) {
       qHtml += '<tr style="background:rgba(74,142,194,0.06);"><td style="padding:3px 8px;color:var(--blue);">' + rc + ' $/mt</td>';
       quarters.forEach(function(q) {
@@ -1391,6 +1391,15 @@ function renderForwardBreakevens() {
         qHtml += '<td style="text-align:right;padding:3px 8px;color:var(--blue);">' + (v != null ? '$' + fmtD(v, 1) : '-') + '</td>';
       });
       qHtml += '</tr>';
+      if (flatRates[rc]) {
+        qHtml += '<tr style="background:rgba(74,142,194,0.03);border-bottom:1px solid var(--border);"><td style="padding:3px 8px;color:var(--text-dim);">' + rc + ' WS</td>';
+        quarters.forEach(function(q) {
+          var v = qAvgFfa[rc][q.label];
+          var ws = v != null ? (v / flatRates[rc] * 100) : null;
+          qHtml += '<td style="text-align:right;padding:3px 8px;color:var(--text-dim);">' + (ws != null ? 'w' + fmtD(ws, 1) : '-') + '</td>';
+        });
+        qHtml += '</tr>';
+      }
     });
 
     // Separator
