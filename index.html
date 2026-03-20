@@ -428,8 +428,8 @@ function applyVesselClass(vcKey) {
 function fmtN(n) { return n != null ? Math.round(n).toLocaleString('en-US') : '-'; }
 function fmtD(n, d) { return n != null ? n.toFixed(d) : '-'; }
 // Vessel-class-aware canal cost lookup (returns number)
-function getSuezLaden(vc) { var c = getSuezLaden(state.vesselClass); return typeof c === 'object' ? (c[vc] || c.MR50) : c; }
-function getSuezBallast(vc) { var c = getSuezBallast(state.vesselClass); return typeof c === 'object' ? (c[vc] || c.MR50) : c; }
+function getSuezLaden(vc) { var c = D.canalCosts.suez_laden; return (typeof c === 'object') ? (c[vc] || c.MR50) : c; }
+function getSuezBallast(vc) { var c = D.canalCosts.suez_ballast; return (typeof c === 'object') ? (c[vc] || c.MR50) : c; }
 function getDist(a, b) {
   var key = a + '|' + b;
   if (D.distances[key] != null) return D.distances[key];
