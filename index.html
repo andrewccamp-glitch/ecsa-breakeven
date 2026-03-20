@@ -368,6 +368,7 @@ var state = {
   nextVoyage: true,
   refDate: new Date(),
   vlsfo: 0,
+  vlsfo_sin: 0,
   lsmgo: 0,
   ffa: {},  // { TC2: rate, TC5: rate, ... }
   _useSpotPrices: false,
@@ -461,7 +462,10 @@ function getFwdRate(routeCode, y, m) {
 }
 
 function getFwdBunker(type, y, m) {
-  if (state._useSpotPrices) return type === 'VLSFO' ? state.vlsfo : state.lsmgo;
+  if (state._useSpotPrices) {
+    if (type === 'VLSFO_SIN') return state.vlsfo_sin || state.vlsfo;
+    return type === 'VLSFO' ? state.vlsfo : state.lsmgo;
+  }
   if (typeof FORWARD_BUNKER !== 'undefined' && FORWARD_BUNKER[type]) {
     var curve = FORWARD_BUNKER[type];
     for (var i = 0; i < curve.length; i++) {
@@ -469,7 +473,15 @@ function getFwdBunker(type, y, m) {
     }
     return curve[curve.length - 1].p;
   }
+  // Fallback: VLSFO_SIN falls back to Rotterdam if no Singapore data
+  if (type === 'VLSFO_SIN') return state.vlsfo_sin || state.vlsfo;
   return type === 'VLSFO' ? state.vlsfo : state.lsmgo;
+}
+// Route-aware VLSFO: returns Singapore or Rotterdam based on route's bunkerRef
+function getRouteVlsfo(routeCode, y, m) {
+  var route = D.routes[routeCode];
+  if (route && route.bunkerRef === 'asia') return getFwdBunker('VLSFO_SIN', y, m);
+  return getFwdBunker('VLSFO', y, m);
 }
 
 // Compute ballast days from distance
@@ -542,8 +554,8 @@ function calcCompetitionTCE(openPos, routeCode, refDate) {
   var rate = getFwdRate(routeCode, aYM.y, aYM.m);
   if (rate == null) return null;
 
-  // Bunker price for the voyage month
-  var voyVlsfo = getFwdBunker('VLSFO', aYM.y, aYM.m);
+  // Bunker price for the voyage month — route-specific VLSFO
+  var voyVlsfo = getRouteVlsfo(routeCode, aYM.y, aYM.m);
   var voyLsmgo = getFwdBunker('LSMGO', aYM.y, aYM.m);
 
   var ladenDays = ladenDaysFromDist(ladenDist);
@@ -618,7 +630,7 @@ function calcNextVoyageTCE(fromPort, routeCode, departDate) {
   var rate = getFwdRate(routeCode, aYM.y, aYM.m);
   if (rate == null) return null;
 
-  var voyVlsfo = getFwdBunker('VLSFO', aYM.y, aYM.m);
+  var voyVlsfo = getRouteVlsfo(routeCode, aYM.y, aYM.m);
   var voyLsmgo = getFwdBunker('LSMGO', aYM.y, aYM.m);
 
   var ladenDays = ladenDaysFromDist(ladenDist);
@@ -1515,7 +1527,7 @@ function calcHistoricalBreakevens() {
   var fwdResults = {};
 
   // Save state
-  var origVlsfo = state.vlsfo, origLsmgo = state.lsmgo;
+  var origVlsfo = state.vlsfo, origVlsfoSin = state.vlsfo_sin, origLsmgo = state.lsmgo;
   var origFfa = {};
   routes.forEach(function(c) { origFfa[c] = state.ffa[c]; });
 
@@ -1543,6 +1555,7 @@ function calcHistoricalBreakevens() {
     if (!hasRates) return;
 
     state.vlsfo = bunkers.VLSFO;
+    state.vlsfo_sin = bunkers.VLSFO_SIN || bunkers.VLSFO;
     state.lsmgo = bunkers.LSMGO;
     routes.forEach(function(c) { state.ffa[c] = rates[c] || 0; });
 
@@ -1604,6 +1617,7 @@ function calcHistoricalBreakevens() {
   if (fwdMonths.length > 0) {
     // Restore state, use forward curves naturally (_useSpotPrices = false)
     state.vlsfo = origVlsfo;
+    state.vlsfo_sin = origVlsfoSin;
     state.lsmgo = origLsmgo;
     routes.forEach(function(c) { state.ffa[c] = origFfa[c]; });
     state._useSpotPrices = false;
@@ -1673,6 +1687,7 @@ function calcHistoricalBreakevens() {
 
   // Restore state
   state.vlsfo = origVlsfo;
+  state.vlsfo_sin = origVlsfoSin;
   state.lsmgo = origLsmgo;
   state._useSpotPrices = false;
   routes.forEach(function(c) { state.ffa[c] = origFfa[c]; });
@@ -2248,7 +2263,8 @@ function renderAssumptions(sub) {
   else if (currentAssumeSub === 'bunkers') {
     html += '<div class="assume-section">Current Bunker Prices</div>';
     html += '<table class="assume-table" style="max-width:500px;"><thead><tr><th>Type</th><th class="num">Price ($/mt)</th><th>Usage</th></tr></thead><tbody>';
-    html += '<tr><td>VLSFO</td><td class="num">$' + fmtD(state.vlsfo, 0) + '</td><td>Laden, ballast, discharge port</td></tr>';
+    html += '<tr><td>VLSFO Rotterdam</td><td class="num">$' + fmtD(state.vlsfo, 0) + '</td><td>Atlantic routes (TC2, TC6, TC14) + SA\u2192India</td></tr>';
+    html += '<tr><td>VLSFO Singapore</td><td class="num">$' + fmtD(state.vlsfo_sin, 0) + '</td><td>Asian routes (TC5, TC12, TC17)</td></tr>';
     html += '<tr><td>LSMGO</td><td class="num">$' + fmtD(state.lsmgo, 0) + '</td><td>Load port, waiting</td></tr>';
     html += '</tbody></table>';
 
@@ -2351,6 +2367,7 @@ function init() {
   if (typeof FREIGHT_DATA !== 'undefined') {
     var md = FREIGHT_DATA.market_defaults;
     state.vlsfo = md.vlsfo;
+    state.vlsfo_sin = md.vlsfo_sin || md.vlsfo;
     state.lsmgo = md.lsmgo;
     document.getElementById('dispVlsfo').textContent = '$' + fmtD(md.vlsfo, 0);
     document.getElementById('dispLsmgo').textContent = '$' + fmtD(md.lsmgo, 0);
@@ -2379,7 +2396,8 @@ function init() {
   // Build params grid
   var paramsGrid = document.getElementById('paramsGrid');
   var params = [
-    { key: 'vlsfo', label: 'VLSFO ($/mt)', val: state.vlsfo },
+    { key: 'vlsfo', label: 'VLSFO Rotterdam ($/mt)', val: state.vlsfo },
+    { key: 'vlsfo_sin', label: 'VLSFO Singapore ($/mt)', val: state.vlsfo_sin },
     { key: 'lsmgo', label: 'LSMGO ($/mt)', val: state.lsmgo },
     { key: 'ladenSpeed', label: 'Laden Speed (kn)', val: state.ladenSpeed },
     { key: 'ballastSpeed', label: 'Ballast Speed (kn)', val: state.ballastSpeed },

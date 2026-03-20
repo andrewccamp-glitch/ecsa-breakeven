@@ -69,13 +69,14 @@ const ECSA_DATA = {
   },
 
   // ── TC Route Definitions ──
+  // bunkerRef: 'asia' routes use Singapore VLSFO; all others use Rotterdam VLSFO
   routes: {
-    TC2:  { desc: "Continent → USAC 37kt",         loadPort: "Rotterdam",  dischPort: "New York",      cargo: 37000,  vesselClass: "MR",  ballastBack: "Houston",    usesSuez: false },
-    TC5:  { desc: "MEG → Japan 55kt (LR1)",         loadPort: "Ras Tanura", dischPort: "Yokohama",      cargo: 55000,  vesselClass: "LR1", ballastBack: "Ras Tanura", usesSuez: false },
-    TC6:  { desc: "Algeria → Med 30kt (Handy)",     loadPort: "Skikda",     dischPort: "Lavera",        cargo: 30000,  vesselClass: "Small",ballastBack: "Skikda",    usesSuez: false },
-    TC12: { desc: "WCI → Japan 55kt (LR1)",         loadPort: "Mundra",     dischPort: "Yokohama",      cargo: 55000,  vesselClass: "LR1", ballastBack: "Mundra",     usesSuez: false },
-    TC14: { desc: "USG → Continent 38kt",           loadPort: "Houston",    dischPort: "Amsterdam",     cargo: 38000,  vesselClass: "MR",  ballastBack: "Rotterdam",  usesSuez: false },
-    TC17: { desc: "AG → East Africa 35kt",          loadPort: "Ras Tanura", dischPort: "Dar es Salaam", cargo: 35000,  vesselClass: "MR",  ballastBack: "Ras Tanura", usesSuez: false },
+    TC2:  { desc: "Continent → USAC 37kt",         loadPort: "Rotterdam",  dischPort: "New York",      cargo: 37000,  vesselClass: "MR",  ballastBack: "Houston",    usesSuez: false, bunkerRef: "atlantic" },
+    TC5:  { desc: "MEG → Japan 55kt (LR1)",         loadPort: "Ras Tanura", dischPort: "Yokohama",      cargo: 55000,  vesselClass: "LR1", ballastBack: "Ras Tanura", usesSuez: false, bunkerRef: "asia" },
+    TC6:  { desc: "Algeria → Med 30kt (Handy)",     loadPort: "Skikda",     dischPort: "Lavera",        cargo: 30000,  vesselClass: "Small",ballastBack: "Skikda",    usesSuez: false, bunkerRef: "atlantic" },
+    TC12: { desc: "WCI → Japan 55kt (LR1)",         loadPort: "Mundra",     dischPort: "Yokohama",      cargo: 55000,  vesselClass: "LR1", ballastBack: "Mundra",     usesSuez: false, bunkerRef: "asia" },
+    TC14: { desc: "USG → Continent 38kt",           loadPort: "Houston",    dischPort: "Amsterdam",     cargo: 38000,  vesselClass: "MR",  ballastBack: "Rotterdam",  usesSuez: false, bunkerRef: "atlantic" },
+    TC17: { desc: "AG → East Africa 35kt",          loadPort: "Ras Tanura", dischPort: "Dar es Salaam", cargo: 35000,  vesselClass: "MR",  ballastBack: "Ras Tanura", usesSuez: false, bunkerRef: "asia" },
   },
 
   // ── Opening Positions & Competition Mapping ──
