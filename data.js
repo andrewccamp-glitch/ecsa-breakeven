@@ -353,10 +353,10 @@ const ECSA_DATA = {
     "Cartagena":      40000,   // Colombia
   },
 
-  // ── Canal Costs ──
+  // ── Canal Costs (vessel-class specific for Suez) ──
   canalCosts: {
-    suez_laden:   250000,
-    suez_ballast: 200000,
+    suez_laden:   { HANDC37: 120000, MR50: 170000, LR1_75: 350000, LR2_115: 450000 },
+    suez_ballast: { HANDC37: 100000, MR50: 140000, LR1_75: 280000, LR2_115: 360000 },
     suez_days:    1.0,
     panama_ballast:    150000,  // MR ballast transit (~$100-150k for clean MR)
     panama_waitDays:   2.0,     // average wait + transit time
