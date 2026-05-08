@@ -9,6 +9,7 @@
   <script src="https://andrewccamp-glitch.github.io/global-dashboard/freight-calculator/data.js"></script>
   <script src="https://andrewccamp-glitch.github.io/global-dashboard/freight-calculator/forward_curve_data.js"></script>
   <script src="https://andrewccamp-glitch.github.io/global-dashboard/freight-calculator/historical_data.js"></script>
+  <script src="https://andrewccamp-glitch.github.io/global-dashboard/freight-calculator/bunker_spot_data.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -255,7 +256,7 @@
         <div class="pos-selector" id="histPosSelector" style="margin-bottom:0;">
           <span style="font-size:10px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;margin-right:4px;">Position:</span>
         </div>
-        <div>
+        <div id="histLookbackWrap">
           <span style="font-size:10px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;margin-right:4px;">Lookback:</span>
           <div class="toggle-group" id="histLookbackToggle" style="display:inline-flex;">
             <button class="toggle-btn active" data-val="1">1Y</button>
@@ -264,6 +265,17 @@
             <button class="toggle-btn" data-val="0">All</button>
           </div>
         </div>
+        <div>
+          <span style="font-size:10px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;margin-right:4px;">View:</span>
+          <div class="toggle-group" id="histViewToggle" style="display:inline-flex;">
+            <button class="toggle-btn active" data-val="continuous">Continuous</button>
+            <button class="toggle-btn" data-val="seasonal">Seasonal</button>
+          </div>
+        </div>
+      </div>
+      <div id="histYearSelector" style="display:none;margin-bottom:8px;">
+        <span style="font-size:10px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;margin-right:4px;">Years:</span>
+        <span id="histYearChips" style="display:inline-flex;gap:4px;flex-wrap:wrap;"></span>
       </div>
       <div class="chart-container" style="height:400px;">
         <canvas id="histChart"></canvas>
@@ -582,7 +594,14 @@ function calcCompetitionTCE(openPos, routeCode, refDate) {
 
   var totalDays = ballastToLoadDays + ladenDays + ballastBackDays + portDays + canalDays;
 
-  var gross = rate * cargo;
+  // Overage pricing for small-vessel routes (TC6, TC23)
+  var ovr = D.overageRoutes ? D.overageRoutes[routeCode] : null;
+  var gross;
+  if (ovr && cargo > ovr.baseCargo) {
+    gross = ovr.baseCargo * rate - ovr.overagePct * rate * (cargo - ovr.baseCargo);
+  } else {
+    gross = rate * cargo;
+  }
   var commission = (state.commissionPct / 100) * gross;
 
   var ladenBunker = ladenDays * state.ladenCons * voyVlsfo;
@@ -649,7 +668,14 @@ function calcNextVoyageTCE(fromPort, routeCode, departDate) {
 
   var totalDays = b2lDays + ladenDays + portDays + canalDays;
 
-  var gross = rate * cargo;
+  // Overage pricing for small-vessel routes
+  var ovr = D.overageRoutes ? D.overageRoutes[routeCode] : null;
+  var gross;
+  if (ovr && cargo > ovr.baseCargo) {
+    gross = ovr.baseCargo * rate - ovr.overagePct * rate * (cargo - ovr.baseCargo);
+  } else {
+    gross = rate * cargo;
+  }
   var commission = (state.commissionPct / 100) * gross;
   var ladenBunker = ladenDays * state.ladenCons * voyVlsfo;
   var ballastBunker = b2lDays * state.ballastCons * voyVlsfo;
@@ -755,9 +781,7 @@ function calcSAIndiaTCE(openPos, rate, refDate) {
   var d1d2Dist = getDist(ports[0], ports[1]);
   var d1d2Days = d1d2Dist ? ladenDaysFromDist(d1d2Dist) : 0;
 
-  // Ballast from last discharge port to AG
-  var d2agDist = getDist(ports[1], D.saIndiaVoyage.ballastAfter);
-  var d2agDays = d2agDist ? ballastDaysFromDist(d2agDist) : 0;
+  // No forced ballast-back — next voyage handles repositioning from discharge port
 
   // Cleaning: 1 before load, 1 after discharge
   var totalCleanDays = state.cleaningDays * 2;
@@ -770,7 +794,7 @@ function calcSAIndiaTCE(openPos, rate, refDate) {
 
   // Sea days
   var totalLadenDays = t2pDays + p2d1Days + d1d2Days;
-  var totalBallastDays = b2tDays + d2agDays;
+  var totalBallastDays = b2tDays;  // ballast to load only
   var totalRiverDays = riverUpDays + riverDownDays;
 
   var totalDays = totalBallastDays + totalRiverDays + totalLadenDays + totalPortDays + totalCleanDays;
@@ -796,11 +820,12 @@ function calcSAIndiaTCE(openPos, rate, refDate) {
   // End date for next voyage chaining
   var endDate = addDays(arrivalTimbues, totalDays - b2tDays);
 
-  // Next voyage from AG (pick best of TC17, TC5, TC12)
+  // Next voyage from last discharge port — evaluate ALL routes, pick best
+  var lastDischPort = ports[ports.length - 1];
   var nextVoy = null;
   if (state.nextVoyage) {
-    D.saIndiaVoyage.nextVoyageOptions.forEach(function(nvCode) {
-      var nv = calcNextVoyageTCE(D.saIndiaVoyage.ballastAfter, nvCode, endDate);
+    Object.keys(D.routes).forEach(function(nvCode) {
+      var nv = calcNextVoyageTCE(lastDischPort, nvCode, endDate);
       if (nv && (!nextVoy || nv.tce > nextVoy.tce)) nextVoy = nv;
     });
     if (nextVoy) {
@@ -1488,6 +1513,8 @@ function renderForwardBreakevens() {
 var histChart = null;
 var histPositions = { Average: true, Accra: false, Mejillones: false, Santos: false, Aratu: false };
 var histLookbackYears = 1;  // 0 = All
+var histViewMode = 'continuous'; // 'continuous' | 'seasonal'
+var histYearSelection = {};      // { 2023: true, 2024: true, ... } — populated lazily from data
 var AVG_COMPONENTS = ['Recalada', 'Santos', 'Aratu', 'Mejillones'];
 
 function calcHistoricalBreakevens() {
@@ -1518,10 +1545,11 @@ function calcHistoricalBreakevens() {
     return bunkerLookup[dt] && bunkerLookup[dt].VLSFO && bunkerLookup[dt].LSMGO;
   }).sort();
 
-  // Apply lookback filter
-  if (histLookbackYears > 0) {
+  // Apply lookback filter (suppressed in seasonal mode — year selector handles filtering)
+  var effectiveLookback = histViewMode === 'seasonal' ? 0 : histLookbackYears;
+  if (effectiveLookback > 0) {
     var cutoff = new Date();
-    cutoff.setFullYear(cutoff.getFullYear() - histLookbackYears);
+    cutoff.setFullYear(cutoff.getFullYear() - effectiveLookback);
     var cutoffStr = cutoff.toISOString().slice(0, 10);
     allDates = allDates.filter(function(dt) { return dt >= cutoffStr; });
   }
@@ -1700,6 +1728,10 @@ function calcHistoricalBreakevens() {
 }
 
 function renderHistChart(results, fwdResults, positions) {
+  if (histViewMode === 'seasonal') {
+    renderSeasonalHistChart(results, positions);
+    return;
+  }
   var posColors = { Accra: '#c9a84c', Mejillones: '#4a8ec2', Santos: '#3d9a50', Aratu: '#c04040', Average: '#b06ccf' };
 
   var datasets = [];
@@ -1796,6 +1828,132 @@ function renderHistChart(results, fwdResults, positions) {
       },
       animation: { duration: 300 },
     }
+  });
+}
+
+// Seasonal view: x-axis = month/day, one line per year, single position only.
+function renderSeasonalHistChart(results, positions) {
+  // Pick the position to plot. Prefer Average if selected, otherwise the first selected.
+  var pos = positions.indexOf('Average') >= 0 ? 'Average' : positions[0];
+  if (!pos || !results[pos]) {
+    if (histChart) { histChart.destroy(); histChart = null; }
+    return;
+  }
+
+  // Group breakevens by calendar year, rebasing dates onto reference year 2000 (leap year).
+  var byYear = {};
+  results[pos].forEach(function(r) {
+    if (r.breakeven == null) return;
+    var year = parseInt(r.date.slice(0, 4), 10);
+    if (!byYear[year]) byYear[year] = [];
+    byYear[year].push({ x: '2000-' + r.date.slice(5), y: r.breakeven, origDate: r.date });
+  });
+
+  var allYears = Object.keys(byYear).map(Number).sort(function(a, b) { return a - b; });
+  // Default any new year to selected.
+  allYears.forEach(function(y) { if (!(y in histYearSelection)) histYearSelection[y] = true; });
+  renderHistYearChips(allYears);
+
+  var thisYear = new Date().getFullYear();
+  var datasets = [];
+  allYears.forEach(function(year, idx) {
+    if (!histYearSelection[year]) return;
+    var hue = Math.round((idx * 360 / Math.max(allYears.length, 1)) % 360);
+    var color = 'hsl(' + hue + ', 65%, 60%)';
+    var isCurrent = (year === thisYear);
+    datasets.push({
+      label: String(year),
+      data: byYear[year].sort(function(a, b) { return a.x < b.x ? -1 : 1; }),
+      borderColor: isCurrent ? '#c9a84c' : color,
+      backgroundColor: (isCurrent ? '#c9a84c' : color) + '22',
+      borderWidth: isCurrent ? 2.8 : 1.3,
+      pointRadius: 0,
+      pointHitRadius: 8,
+      tension: 0.25,
+      order: isCurrent ? 0 : 1,
+    });
+  });
+
+  if (histChart) histChart.destroy();
+  histChart = new Chart(document.getElementById('histChart'), {
+    type: 'line',
+    data: { datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: {
+            color: '#c8c8cc',
+            font: { family: "'IBM Plex Mono', monospace", size: 10 },
+          }
+        },
+        tooltip: {
+          mode: 'nearest', intersect: false,
+          backgroundColor: '#1a1a1d', borderColor: '#2a2a2e', borderWidth: 1,
+          titleFont: { family: "'IBM Plex Mono', monospace", size: 11 },
+          bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
+          callbacks: {
+            title: function(items) {
+              if (!items.length) return '';
+              var raw = items[0].raw;
+              var parts = (raw.origDate || '').split('-');
+              if (parts.length !== 3) return raw.origDate || '';
+              var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              return parts[2] + ' ' + months[parseInt(parts[1], 10) - 1] + ' ' + parts[0];
+            },
+            label: function(ctx) {
+              return ctx.dataset.label + ': $' + fmtD(ctx.parsed.y, 1) + '/mt';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'month', displayFormats: { month: 'MMM' } },
+          min: '2000-01-01',
+          max: '2000-12-31',
+          ticks: { color: '#c8c8cc', font: { family: "'IBM Plex Mono', monospace", size: 10 } },
+          grid: { color: 'rgba(42,42,46,0.3)' },
+        },
+        y: {
+          ticks: { color: '#6e6e76', font: { family: "'IBM Plex Mono', monospace", size: 10 }, callback: function(v) { return '$' + v; } },
+          grid: { color: 'rgba(42,42,46,0.5)' },
+        },
+      },
+      animation: { duration: 300 },
+    }
+  });
+}
+
+function renderHistYearChips(years) {
+  var container = document.getElementById('histYearChips');
+  if (!container) return;
+  var key = years.join(',');
+  if (container.dataset.years === key) {
+    // Just sync active state in case selection changed externally.
+    Array.prototype.forEach.call(container.children, function(chip) {
+      var y = parseInt(chip.dataset.year, 10);
+      chip.classList.toggle('active', !!histYearSelection[y]);
+    });
+    return;
+  }
+  container.dataset.years = key;
+  container.innerHTML = '';
+  years.forEach(function(y) {
+    var chip = document.createElement('button');
+    chip.className = 'pos-chip' + (histYearSelection[y] !== false ? ' active' : '');
+    chip.textContent = String(y);
+    chip.dataset.year = String(y);
+    chip.addEventListener('click', function() {
+      histYearSelection[y] = !histYearSelection[y];
+      chip.classList.toggle('active');
+      // Ensure at least one year remains selected.
+      var any = years.some(function(yy) { return histYearSelection[yy]; });
+      if (!any) { histYearSelection[y] = true; chip.classList.add('active'); }
+      calcHistoricalBreakevens();
+    });
+    container.appendChild(chip);
   });
 }
 
@@ -2317,6 +2475,18 @@ function renderAssumptions(sub) {
       });
       html += '</tbody></table></div>';
     }
+
+    if (typeof BUNKER_SPOT !== 'undefined' && BUNKER_SPOT.ports) {
+      html += '<div class="assume-section">Ship&Bunker Spot Prices (as of ' + BUNKER_SPOT.date + ')</div>';
+      html += '<div style="overflow-x:auto;"><table class="assume-table"><thead><tr><th>Port</th><th class="num">VLSFO</th><th class="num">MGO</th><th class="num">IFO380</th></tr></thead><tbody>';
+      BUNKER_SPOT.ports.forEach(function(p) {
+        html += '<tr><td>' + p.name + '</td>';
+        html += '<td class="num">' + (p.vlsfo != null ? '$' + fmtD(p.vlsfo, 0) : '-') + '</td>';
+        html += '<td class="num">' + (p.mgo != null ? '$' + fmtD(p.mgo, 0) : '-') + '</td>';
+        html += '<td class="num">' + (p.ifo380 != null ? '$' + fmtD(p.ifo380, 0) : '-') + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
   }
 
   else if (currentAssumeSub === 'routes') {
@@ -2555,6 +2725,20 @@ function init() {
       document.querySelectorAll('#histLookbackToggle .toggle-btn').forEach(function(b) { b.classList.remove('active'); });
       btn.classList.add('active');
       histLookbackYears = parseInt(btn.dataset.val);
+      calcHistoricalBreakevens();
+    });
+  });
+
+  // View toggle (Continuous vs Seasonal)
+  document.querySelectorAll('#histViewToggle .toggle-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('#histViewToggle .toggle-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      histViewMode = btn.dataset.val;
+      var lookbackWrap = document.getElementById('histLookbackWrap');
+      var yearSel = document.getElementById('histYearSelector');
+      if (lookbackWrap) lookbackWrap.style.display = histViewMode === 'seasonal' ? 'none' : '';
+      if (yearSel) yearSel.style.display = histViewMode === 'seasonal' ? '' : 'none';
       calcHistoricalBreakevens();
     });
   });
