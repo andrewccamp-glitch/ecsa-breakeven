@@ -414,6 +414,13 @@ function effectiveCargo(v) {
   return cargo;
 }
 
+// Discharge pumping rate (mt/hr) — per destination where it differs from the
+// SA_DISCH default (e.g. Umm Qasr discharges at 700).
+function dischRate() {
+  var opt = getDischOpt();
+  return (opt && opt.dischRate) || D.terminalRates.SA_DISCH;
+}
+
 // Grey out vessel classes not allowed for the selected destination; if the
 // current class is disallowed, auto-switch to MR50 (allowed everywhere).
 function applyDischConstraints() {
@@ -453,7 +460,7 @@ function applyVesselClass(vcKey) {
   state.cleaningCost = v.cleaningCost;
   state.cleaningDays = v.cleaningDays;
   state.loadDays = cargo / D.terminalRates.SA_LOAD / 24;
-  state.dischDays = cargo / D.terminalRates.SA_DISCH / 24;
+  state.dischDays = cargo / dischRate() / 24;
   // Update param input fields if they exist
   var paramKeys = ['ladenSpeed','ballastSpeed','ladenCons','ballastCons','portConsLoad','portConsDisch','portConsWait','commissionPct','cargoSAIndia','cleaningCost','cleaningDays','loadDays','dischDays'];
   paramKeys.forEach(function(k) {
@@ -1136,7 +1143,7 @@ function showDrillDown(pos) {
   html += '<tr><td>  River transit (up+down)</td><td class="num-right">' + fmtD(sa.riverDays, 1) + ' days</td></tr>';
   html += '<tr><td>  Laden sea days</td><td class="num-right">' + fmtD(sa.ladenDays, 1) + ' days</td></tr>';
   var saLoadHrs = state.cargoSAIndia / D.terminalRates.SA_LOAD;
-  var saDischHrs = state.cargoSAIndia / D.terminalRates.SA_DISCH;
+  var saDischHrs = state.cargoSAIndia / dischRate();
   html += '<tr><td>  Port days (load+disch)</td><td class="num-right">' + fmtD(sa.portDaysTotal, 1) + ' days (' + fmtD(saLoadHrs, 0) + 'h + ' + fmtD(saDischHrs, 0) + 'h)</td></tr>';
   html += '<tr><td>  Cleaning</td><td class="num-right">' + fmtD(sa.cleanDays, 1) + ' days</td></tr>';
   html += '<tr><td>  Ballast to AG</td><td class="num-right">(incl. in ballast)</td></tr>';
@@ -2461,7 +2468,7 @@ function renderAssumptions(sub) {
       var dischHrs = (v.intake / tr.disch).toFixed(1);
       html += '<tr><td>' + k + '</td><td class="num">' + tr.load + '</td><td class="num">' + tr.disch + '</td><td class="num">' + loadHrs + ' / ' + dischHrs + '</td></tr>';
     });
-    html += '<tr><td>SA Physical</td><td class="num">' + D.terminalRates.SA_LOAD + '</td><td class="num">' + D.terminalRates.SA_DISCH + '</td><td class="num">' + (v.cargoSAIndia / D.terminalRates.SA_LOAD).toFixed(1) + ' / ' + (v.cargoSAIndia / D.terminalRates.SA_DISCH).toFixed(1) + '</td></tr>';
+    html += '<tr><td>SA Physical</td><td class="num">' + D.terminalRates.SA_LOAD + '</td><td class="num">' + dischRate() + '</td><td class="num">' + (state.cargoSAIndia / D.terminalRates.SA_LOAD).toFixed(1) + ' / ' + (state.cargoSAIndia / dischRate()).toFixed(1) + '</td></tr>';
     html += '</tbody></table>';
 
     html += '<div class="assume-section">Other</div>';
@@ -2479,13 +2486,13 @@ function renderAssumptions(sub) {
     html += '<table class="assume-table" style="max-width:600px;"><tbody>';
     var sv = getVessel();
     var saLoadHrs = sv.cargoSAIndia / D.terminalRates.SA_LOAD;
-    var saDischHrs = sv.cargoSAIndia / D.terminalRates.SA_DISCH;
+    var saDischHrs = state.cargoSAIndia / dischRate();
     html += '<tr><td>Vessel</td><td class="num" style="color:var(--gold);">' + sv.name + ' (intake ' + fmtN(sv.intake) + ' mt)</td></tr>';
     html += '<tr><td>SA→India Cargo</td><td class="num">' + fmtN(sv.cargoSAIndia) + ' mt</td></tr>';
     html += '<tr><td>FFA Route Cargo</td><td class="num">' + fmtN(sv.intake) + ' mt (full intake)</td></tr>';
     html += '<tr><td>Loading Laytime</td><td class="num">' + fmtD(saLoadHrs, 0) + ' hours (' + fmtD(saLoadHrs / 24, 1) + ' days)</td></tr>';
     html += '<tr><td>Discharge Laytime</td><td class="num">' + fmtD(saDischHrs, 0) + ' hours (' + fmtD(saDischHrs / 24, 1) + ' days)</td></tr>';
-    html += '<tr><td>SA Terminal Rate</td><td class="num">' + D.terminalRates.SA_LOAD + ' mt/hr load, ' + D.terminalRates.SA_DISCH + ' mt/hr disch</td></tr>';
+    html += '<tr><td>SA Terminal Rate</td><td class="num">' + D.terminalRates.SA_LOAD + ' mt/hr load, ' + dischRate() + ' mt/hr disch (' + state.dischRegion + ')</td></tr>';
     Object.keys(D.saIndiaVoyage.dischOptions).forEach(function(k) {
       var o = D.saIndiaVoyage.dischOptions[k];
       var extra = [];
@@ -2684,7 +2691,7 @@ function renderAssumptions(sub) {
       html += '<table class="assume-table"><thead><tr><th>Region</th><th>Port 1</th><th>Port 2</th><th>Ballast Hub</th><th>Next Voyage</th></tr></thead><tbody>';
       Object.keys(D.destinationRegions).forEach(function(key) {
         var dr = D.destinationRegions[key];
-        html += '<tr><td>' + dr.label + '</td><td>' + dr.ports[0] + '</td><td>' + dr.ports[1] + '</td><td>' + dr.ballastAfter + '</td><td>' + dr.nextVoyageOptions.join(', ') + (dr.panamaBalAfter ? ' (Panama)' : '') + '</td></tr>';
+        html += '<tr><td>' + dr.label + '</td><td>' + dr.ports[0] + '</td><td>' + (dr.ports[1] || '—') + '</td><td>' + dr.ballastAfter + '</td><td>' + dr.nextVoyageOptions.join(', ') + (dr.panamaBalAfter ? ' (Panama)' : '') + '</td></tr>';
       });
       html += '</tbody></table>';
     }

@@ -138,7 +138,7 @@ const ECSA_DATA = {
       ECI: { ports: ["Chennai", "Haldia"], label: "East Coast India" },
       RTM: { ports: ["Rotterdam"], label: "Rotterdam", cargoCap: 40000, vesselClasses: ["HANDC37", "MR50"] },
       EGY: { ports: ["Alexandria"], label: "Egypt (Alexandria)", cargoCap: 33000, vesselClasses: ["HANDC37", "MR50"] },
-      IRQ: { ports: ["Umm Qasr"], label: "Iraq (Umm Qasr)", cargoCap: 33000, vesselClasses: ["HANDC37", "MR50"] },
+      IRQ: { ports: ["Umm Qasr"], label: "Iraq (Umm Qasr)", cargoCap: 33000, vesselClasses: ["HANDC37", "MR50"], dischRate: 700 },
       CHN: { ports: ["Zhangjiagang", "Tianjin"], label: "China (Zhangjiagang + Tianjin)", cargoCap: 40000, vesselClasses: ["MR50"] },
     },
     ballastAfter: "Ras Tanura",
